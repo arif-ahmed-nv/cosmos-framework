@@ -21,6 +21,13 @@ cosmos-framework at PR #303 head 4475a3a plus the guards that are now part of th
 Required overrides on that stack: `max_sequence_length 8192` (memory), sdpa on both policy
 keys, async checkpointing off. All of them are now defaults of this skill's launcher or recipe.
 
+Retest at the rebased head 7a6bca4 (main 7a4b057 plus the Windows commits; Cosmos QA, 2026-11-06), stock branch, no local
+guards, no overrides, `toml` uninstalled: config import, the one-step smoke, a 20-step two-epoch run with validation
+(train loss 2.17, validation 4.55 to 4.31), two 33 GB DCP saves at 132 s each, two exports with zero residual LoRA keys and
+two evaluations all passed; the sdpa and synchronous-save fallbacks engaged on their own. Unit tests: 12 passed, 1 skipped,
+3 failed, the failures being POSIX-only `os.statvfs` mocks. The two code findings (a second `toml` import in
+`utils/workflow_status.py`, the statvfs mocks) are fixed in 69fee1f, the head this skill pins.
+
 ## Fine-tuning results on the earlier stack (ITS work, 2026-10-30 to 11-04)
 
 Machine: RTX Spark N1X, 128 GB (101.5 GiB CUDA-visible), 1600 MHz clock cap, pacer 84/78/87 C.

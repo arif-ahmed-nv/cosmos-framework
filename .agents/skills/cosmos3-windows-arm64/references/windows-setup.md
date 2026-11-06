@@ -50,8 +50,8 @@ without it; Parquet features fail with a clear `ModuleNotFoundError` where they 
 ## The framework
 
 `main` with PR #303 ("make training importable and runnable on native Windows"). Until it
-merges: `git fetch origin pull/303/head:windows-compat && git checkout windows-compat` in a
-clone of `NVIDIA/cosmos-framework`. Install editable with `--no-deps` (the dependency file
+merges: clone `arif-ahmed-nv/cosmos-framework` and check out `windows-compat` (main plus the PR; the
+`pull/303` refs exist only on `NVIDIA/cosmos-framework`, the fork branch holds the same commits). Install editable with `--no-deps` (the dependency file
 already satisfied everything). Checkouts without #303 fail on this platform at import (pyarrow),
 at the first training step (attention backend) or at the first checkpoint save (statvfs, libuv,
 pinned staging); do not patch them, update.

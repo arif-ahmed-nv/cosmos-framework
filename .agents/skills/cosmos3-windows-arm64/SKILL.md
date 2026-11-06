@@ -102,8 +102,8 @@ allocates, writes, synchronizes and frees the requested buffer, so run it on an 
 $ROOT = "C:\cosmos3"; $VENV = "$ROOT\venv"; $PY = "$VENV\Scripts\python.exe"; $REPO = "$ROOT\cosmos-framework"; $SKILL = "<directory of this SKILL.md>"
 $TORCHCODEC_WHEEL = "<path to torchcodec-*+cu134-cp313-cp313-win_arm64.whl>"   # see references/windows-setup.md § TorchCodec
 & $PY -m pip install -r $SKILL\assets\requirements-windows-arm64.txt
-if (-not (Test-Path $REPO)) { git clone https://github.com/NVIDIA/cosmos-framework.git $REPO }
-git -C $REPO fetch origin pull/303/head:windows-compat; git -C $REPO checkout windows-compat   # after #303 merges: git -C $REPO checkout main
+if (-not (Test-Path $REPO)) { git clone https://github.com/arif-ahmed-nv/cosmos-framework.git $REPO }   # until #303 merges; afterwards clone https://github.com/NVIDIA/cosmos-framework.git and check out main
+git -C $REPO fetch origin windows-compat; git -C $REPO checkout -B windows-compat origin/windows-compat   # main + PR #303; the pull/303 refs exist only on NVIDIA/cosmos-framework, the fork branch holds the same commits
 & $PY -m pip install -e $REPO --no-deps
 & $PY -m pip install --no-deps $TORCHCODEC_WHEEL
 & $PY $SKILL\scripts\configure_windows_arm64_dll_paths.py --venv $VENV
