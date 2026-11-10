@@ -123,7 +123,7 @@ git -C $REPO fetch origin windows-compat; git -C $REPO checkout -B windows-compa
 & $PY $SKILL\scripts\configure_windows_arm64_dll_paths.py --venv $VENV
 & $PY -c "import torch, torchcodec, cosmos_framework; from torchcodec.decoders import VideoDecoder; print(torch.__version__, torchcodec.__version__, torch.cuda.is_available())"
 & $PY -c "import sys; sys.modules['pyarrow'] = None; import cosmos_framework.configs.base.reasoner.config; print('reasoner config imports without pyarrow')"
-& $PY -m cosmos_framework.scripts.train --help | Select-Object -First 3
+(& $PY -m cosmos_framework.scripts.train --help) | Select-Object -First 3    # the parentheses let python finish; without them Select-Object cuts the pipe and the block ends with exit code -1
 ```
 
 Expected: the three checks print the torch and torchcodec versions with `True`, the
