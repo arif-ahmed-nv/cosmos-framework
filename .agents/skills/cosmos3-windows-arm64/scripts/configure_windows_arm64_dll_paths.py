@@ -71,10 +71,10 @@ def configure(
     if not site_packages.is_dir():
         raise ValueError(f"not a Windows venv site-packages directory: {site_packages}")
     directories = candidate_directories(venv, extra)
-    if not directories:
-        raise ValueError("no DLL directories were found")
     # torch\lib is the only directory every route needs. GStreamer (jpeg8.dll, png16.dll) is needed
     # only by a source-built TorchCodec; the CI-built wheels bundle their image and FFmpeg libraries.
+    # This check comes first so that a venv without torch is named as such on every machine: with no
+    # CUDA toolkit, cuDNN or GStreamer installed the candidate list is empty.
     torch_lib = (site_packages / "torch" / "lib").resolve()
     if torch_lib not in directories:
         raise ValueError(f"required DLL directory is missing: {torch_lib} (install torch into this venv first)")
