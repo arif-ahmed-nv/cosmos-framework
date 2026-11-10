@@ -110,7 +110,9 @@ report to `--output`. The allocation gate allocates, writes, synchronizes and fr
 requested buffer, so run it on an idle GPU. It is slow: about two minutes for the 72 GiB write
 alone and more than five minutes for a first run, which is longer than the default command
 timeout of most agent harnesses. Set a ten-minute timeout or run it in the background and read
-the output file; progress lines go to stderr while it works.
+the output file; progress lines go to stderr while it works. Do not add `2>&1` to the call:
+under Windows PowerShell 5.1 the first progress line then becomes an error record, and with
+`$ErrorActionPreference = 'Stop'` it ends the script before the report is printed.
 
 ```powershell
 # Block 2: the framework at main + #303, its dependency set, TorchCodec, the DLL search path.
