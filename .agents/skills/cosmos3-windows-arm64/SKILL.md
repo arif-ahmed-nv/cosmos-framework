@@ -87,7 +87,9 @@ Pins that are not negotiable: ARM64 CPython 3.13; torch `2.15.0+cu134` with torc
 `0.29.0+cu134` and torchaudio `2.11.0+cu134` from NVIDIA's Windows-on-Arm index (these are the
 stable wheels the PyTorch "additional platforms" page lists for RTX Spark); a TorchCodec wheel
 built for that torch (`win_arm64`, CUDA 13.4). Run each block as one PowerShell call; nothing
-carries over between blocks except files on disk.
+carries over between blocks except files on disk. Give both blocks a ten-minute timeout: on a
+128 GB unit with a fast link Block 1 took 378 s and Block 2 took 380 s (the dependency install
+alone 320 s), and a block cut off at a harness's default two minutes leaves a half-installed venv.
 
 ```powershell
 # Block 1: interpreter, torch, preflight. $ROOT is the only path you choose; $SKILL is the directory holding this SKILL.md.
