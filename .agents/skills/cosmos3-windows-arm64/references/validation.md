@@ -44,6 +44,27 @@ attention. Data: 960 binary video QA records (synthetic traffic renders), 120-re
 Memorisation test (64 records, 10 epochs, lr 1e-4, recipe v2 input): mean loss 0.478 / 0.148 /
 0.004 / 0.000 at epochs 1 / 3 / 5 / 10; a matched evaluator answered 64 of 64.
 
+## Fine-tuning results on the current stack (ITS work, 2026-11-05 to 11-09)
+
+Machine: the same 128 GB unit. Stack: cosmos-framework main `4428b96` with PR #303, sdpa on both
+policy keys, torch `2.15.0.dev20260904+cu134` (nightly), torchcodec `0.17.0a0+1ebfad0` (built
+against the September nightly). Same 960 records and 120-record held-out set as above.
+
+| Configuration | Last-epoch train loss | Held-out accuracy / balanced | Train time | Peak C |
+|---|---|---|---|---|
+| recipe v2: 8 frames at 480x288 + system prompt, 1400 MHz cap | 0.079 (epochs 0.249 / 0.163 / 0.079) | 0.808 / 0.804 | 113.2 min, no pause | 83 |
+
+Against the earlier stack's 0.833 / 0.830 the difference is three records of 120. Step time is
+1.80 s (1.64 to 2.02) at 17 to 19 W. A first attempt at 1600 MHz paused at 84 C after 15 minutes
+and the GPU latched two seconds after the resume (`thermal-operating-point.md`).
+
+Memorisation test on this stack (64 records, 10 epochs, lr 1e-4, recipe v2 input): mean loss
+0.478 / 0.153 / 0.026 / 0.000 at epochs 1 / 3 / 5 / 10 in 21 minutes; the evaluator answered
+64 of 64. sdpa on main memorises as `cosmos` did on the earlier stack.
+
+Resource readings on this stack: 33 GB per DCP save (84 s after a one-step run, 132 s in QA's
+run), about 83 GB peak private host memory during training.
+
 ## W14: why sdpa is right on main and was wrong before
 
 On checkouts older than August 2026 the trainer dropped the attention mask and the HF `sdpa` and
@@ -55,12 +76,17 @@ mask and trains correctly, and on Windows the `cosmos` adapter's vision-tower pa
 backend, so #303 resolves it to sdpa. The memorisation test above is the one-command check for
 either failure.
 
-## Pending (as of 2026-11-05)
+## Pending (as of 2026-11-10)
 
 - This skill's commands on the stable torch `2.15.0+cu134` pairing with a matching TorchCodec:
-  the QA run and the ITS runs used the 2026-09-02 nightly pairing.
-- The recipe v2 numbers on main with sdpa (an equivalence run against the table above is
-  scheduled on the 128 GB development unit).
+  the QA run and the ITS runs used the September nightly pairing.
+- The changes made on 2026-11-10 after a tester's first-day report: the clock cap in an
+  elevated and in a standard shell (`clock_cap.ps1` exit codes, the launcher's cap line,
+  `-RequireCap`), `gpu_probe.ps1`, the DLL helper without GStreamer, the clone without Git LFS,
+  the Arm64 interpreter request with the uv directories under `$ROOT`, the preflight's progress
+  output and `--output`.
+- A conversion from a release downloaded without the generator-only folders
+  (`windows-setup.md` § The model).
 - The synthetic smoke set's loss curve on both units.
 - The eval cases in `eval/eval.config` require a Windows-on-Arm host; the Linux evaluator
   runners cannot execute them. Until a Windows runner class exists, a manual run with the

@@ -45,7 +45,7 @@ annotated-types==0.8.0
 antlr4-python3-runtime==4.9.3
 anyio==4.14.2
 attrs==26.1.0
-av==18.0.0; platform_machine != "ARM64"  # no cp313 win_arm64 wheel; not on the reasoner SFT path
+av==18.0.0; platform_machine != "ARM64"  # 18.0.0 has no win_arm64 wheel (19.0.2 ships an abi3 one); not on the reasoner SFT path
 boto3==1.43.68
 botocore==1.43.68
 cattrs==26.1.0

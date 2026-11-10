@@ -67,8 +67,10 @@ To shorten or lengthen a run, edit those four together and count the logged iter
 The shipped recipe is a 20-step smoke (`steps_per_epoch = 10`, `num_epochs = 2`,
 `max_iter = 20`, `cycle_lengths = [20]`). For a real run on N records: `steps_per_epoch = N`,
 `num_epochs = 3`, `max_iter = 3N`, `cycle_lengths = [3N]`, `save_freq_in_epoch = 1`. Measured
-on the 128 GB unit with N = 960 at 8 frames of 480x288: about 75 minutes including pacer
-pauses, last-epoch mean loss near 0.08. On the 64 GB unit set `max_sequence_length = 8192`.
+on the 128 GB unit with N = 960 at 8 frames of 480x288, main with sdpa, 1400 MHz cap: 113
+minutes with no pacer pause, last-epoch mean loss 0.079 (the earlier stack with `cosmos`
+attention at 1600 MHz: 75 minutes including 9 minutes paused). On the 64 GB unit set
+`max_sequence_length = 8192`.
 
 ## What the log must show
 

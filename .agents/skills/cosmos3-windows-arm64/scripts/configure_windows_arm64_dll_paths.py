@@ -73,11 +73,11 @@ def configure(
     directories = candidate_directories(venv, extra)
     if not directories:
         raise ValueError("no DLL directories were found")
-    required = {"torch", "gstreamer"}
-    found = {"torch" if "torch" in path.parts else "gstreamer" for path in directories if "gstreamer" in str(path).lower() or "torch" in str(path).lower()}
-    missing = required.difference(found)
-    if missing:
-        raise ValueError("required DLL directory is missing: " + ", ".join(sorted(missing)))
+    # torch\lib is the only directory every route needs. GStreamer (jpeg8.dll, png16.dll) is needed
+    # only by a source-built TorchCodec; the CI-built wheels bundle their image and FFmpeg libraries.
+    torch_lib = (site_packages / "torch" / "lib").resolve()
+    if torch_lib not in directories:
+        raise ValueError(f"required DLL directory is missing: {torch_lib} (install torch into this venv first)")
 
     output = site_packages / PTH_FILENAME
     content = pth_content(directories)
@@ -112,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'would write' if args.dry_run else 'wrote'} {output}")
     for directory in directories:
         print(f"  {directory}")
+    if not any("gstreamer" in str(directory).lower() for directory in directories):
+        print(
+            "note: no GStreamer directory registered (optional). A self-contained TorchCodec wheel does not "
+            "need it; a source-built TorchCodec does: pass its msvc_arm64\\bin and the FFmpeg bin with "
+            "--extra-dll-dir and --force."
+        )
     return 0
 
 

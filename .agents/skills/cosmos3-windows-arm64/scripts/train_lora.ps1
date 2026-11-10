@@ -6,7 +6,9 @@
 # Usage: powershell -ExecutionPolicy Bypass -File train_lora.ps1 -Python <venv>\Scripts\python.exe -Recipe <recipe>.toml
 #          -Model <VLM dir> -OutputRoot <dir> -JobName <name> -TrainAnnotation <json> -TrainMedia <dir>
 #          [-ValAnnotation <json> -ValMedia <dir>] [-NumFrames 8] [-MaxPixels 1179648] [-SystemPrompt ""]
-#          [-ClockCapMHz 1600] [-MaxStartTempC 62] [-PauseC 84] [-ResumeC 78] [-LimitC 87] [-TimeoutSec 14400] [-Override k=v,...]
+#          [-ClockCapMHz 1400] [-RequireCap] [-MaxStartTempC 62] [-PauseC 84] [-ResumeC 78] [-LimitC 87] [-TimeoutSec 14400] [-Override k=v,...]
+# The clock cap needs an elevated shell. In a standard shell the driver refuses it; the launcher then says so and runs
+# under the pacer alone (-RequireCap stops instead). -ClockCapMHz 0 skips the cap without trying.
 param(
   [Parameter(Mandatory)][string]$Python,
   [Parameter(Mandatory)][string]$Recipe,
@@ -20,7 +22,8 @@ param(
   [int]$NumFrames = 8,
   [int]$MaxPixels = 1179648,
   [string]$SystemPrompt = "",
-  [int]$ClockCapMHz = 1600,
+  [int]$ClockCapMHz = 1400,
+  [switch]$RequireCap,
   [int]$MaxStartTempC = 62,
   [int]$PauseC = 84,
   [int]$ResumeC = 78,
@@ -67,8 +70,18 @@ $cmd = "`"$Python`" -m cosmos_framework.scripts.train --sft-toml=`"$Recipe`" -- 
 Write-Output "command: $cmd"
 "$((Get-Date).ToUniversalTime().ToString('o')) $cmd" | Set-Content (Join-Path $evidence "$tag.command.txt") -Encoding UTF8
 
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $thermal 'clock_cap.ps1') -Apply $ClockCapMHz -LogPath (Join-Path $evidence 'clock_cap.log') | Out-Null
-Write-Output "clock cap $ClockCapMHz MHz applied"
+# The cap is applied by the driver only for an elevated shell; say what happened instead of assuming it.
+$capApplied = $false
+if ($ClockCapMHz -gt 0) {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $thermal 'clock_cap.ps1') -Apply $ClockCapMHz -LogPath (Join-Path $evidence 'clock_cap.log') | Out-Null
+  $capExit = $LASTEXITCODE
+  $capApplied = ($capExit -eq 0)
+  if ($capApplied) { $capState = "clock cap $ClockCapMHz MHz applied" }
+  else { $capState = "clock cap NOT applied (nvidia-smi exit $capExit; changing clocks needs an elevated shell): uncapped, pacer only" }
+} else { $capState = 'no clock cap requested: uncapped, pacer only' }
+Write-Output $capState
+"cap: $capState" | Add-Content (Join-Path $evidence "$tag.command.txt") -Encoding UTF8
+if ($RequireCap -and -not $capApplied) { throw "-RequireCap: $capState" }
 $pacer = Start-Process -FilePath powershell -PassThru -WindowStyle Hidden -ArgumentList @(
   '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $thermal 'thermal_pacer.ps1'),
   '-Tag', $tag, '-EvidenceDir', $evidence, '-PauseC', $PauseC, '-ResumeC', $ResumeC, '-LimitC', $LimitC, '-MaxSeconds', ($TimeoutSec + 600))
@@ -77,8 +90,11 @@ try {
   & (Join-Path $thermal 'run_measured.ps1') -Tag $tag -CommandLine $cmd -EvidenceDir $evidence -WorkingDirectory $OutputRoot `
       -Python $Python -TimeoutSec $TimeoutSec -MaxStartTempC $MaxStartTempC -Env $envTable
 } finally {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $thermal 'clock_cap.ps1') -Restore -LogPath (Join-Path $evidence 'clock_cap.log') | Out-Null
-  Write-Output "default clocks restored"
+  if ($capApplied) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $thermal 'clock_cap.ps1') -Restore -LogPath (Join-Path $evidence 'clock_cap.log') | Out-Null
+    if ($LASTEXITCODE -eq 0) { Write-Output "default clocks restored" }
+    else { Write-Output "clock reset FAILED (nvidia-smi exit $LASTEXITCODE): run thermal\clock_cap.ps1 -Restore from an elevated shell" }
+  } else { Write-Output "no clock cap was applied; clocks unchanged" }
   if ($pacer -and -not $pacer.HasExited) { $pacer.WaitForExit(30000) | Out-Null }
 }
 $receipt = Get-Content (Join-Path $evidence "$tag.receipt.json") -Raw | ConvertFrom-Json

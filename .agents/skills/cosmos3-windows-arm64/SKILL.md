@@ -19,17 +19,19 @@ it with the Framework evaluator. Input: an annotation JSON (one record per clip 
 LLaVA conversation format) and the clips. Output: `<run>/checkpoints/epoch_N` (DCP),
 `<run>/export/model.safetensors*` (merged, zero LoRA keys), and `results.json` plus a metrics
 summary from the evaluator. Measured on an RTX Spark N1X: a 960-record, 3-epoch LoRA run at
-8 frames of 480x288 takes about 75 minutes under the thermal limiter.
+8 frames of 480x288 takes about 115 minutes at the 1400 MHz clock cap, with no thermal pause.
 
 ## Read this first
 
 1. **The interpreter must be native ARM64.** `python -c "import platform; print(platform.machine())"`
    must print `ARM64`. An x64 Python under emulation installs and imports everything and cannot
    see the GPU. `scripts/preflight_windows_arm64.py` checks this before anything else.
-2. **Memory is unified; nvidia-smi lies about it.** WDDM shows an 8 GiB dedicated segment.
-   The CUDA budget is what the preflight prints: about 101 GiB on the 128 GB unit, about 45 GiB
-   on the 64 GB unit. A DCP checkpoint save needs roughly the state-dict size (18 GB for Nano)
-   in free host memory on top of the resident model, so nothing else runs during a save.
+2. **Memory is unified; nvidia-smi lies about it.** WDDM shows only a dedicated segment (8 GiB
+   on one unit, 32 GiB on another). The CUDA budget is what the preflight prints: 101 to 107 GiB
+   on the 128 GB unit, about 45 GiB on the 64 GB unit. A DCP checkpoint save needs roughly the
+   state-dict size (18 GB for Nano) in free host memory on top of the resident model; a 128 GB
+   unit peaked at about 83 GB of private host memory during training. Nothing else runs during
+   a save.
 3. **Framework version: `main` with PR #303.** Until that PR merges, use the branch named in
    Variant 1 (main plus the Windows commits). Older checkouts fail on this platform in known
    ways (pyarrow at import, the attention backend, checkpoint saves); do not patch them, update.
@@ -39,8 +41,13 @@ summary from the evaluator. Measured on an RTX Spark N1X: a 960-record, 3-epoch 
    makes the run self-describing. The trainer forwards the attention mask under sdpa on main,
    so sdpa trains correctly here (history: `references/validation.md` § W14).
 5. **One GPU job at a time, under the thermal limiter.** `scripts/train_lora.ps1` runs the job
-   inside `scripts/thermal/run_measured.ps1` with the pacer; restore default clocks after every
-   job (`scripts/thermal/clock_cap.ps1 -Restore`). Thresholds and why:
+   inside `scripts/thermal/run_measured.ps1` with a 1400 MHz clock cap and the pacer. The cap
+   needs an elevated PowerShell (Run as administrator): in a standard shell the driver refuses
+   it, the launcher prints `clock cap NOT applied` and the job runs under the pacer alone,
+   hotter and with pauses. Report which of the two happened. The launcher restores the default
+   clocks itself when it applied a cap; after an interrupted job run
+   `scripts/thermal/clock_cap.ps1 -Restore` from an elevated shell. Probe the GPU before a long
+   job and after any job that paused (`scripts/thermal/gpu_probe.ps1`). Thresholds and why:
    `references/thermal-operating-point.md`.
 6. **The Windows overrides live on the command line.** Nine of the eleven cannot be written
    into a recipe TOML (the schema rejects them); the launcher appends them. Do not accept a
@@ -66,7 +73,7 @@ from any directory once the package is installed editable.
 
 | Unit | CUDA-visible | LoRA SFT, 8 frames at 480x288 | LoRA SFT, 8 frames at 128x64 | Notes |
 |---|---|---|---|---|
-| RTX Spark, 128 GB | about 101 GiB | yes; about 1.1 s per step, 25 to 28 W, 81 to 85 C under the pacer | yes; about 0.5 s per step, 17 W, 73 to 77 C | all variants below |
+| RTX Spark, 128 GB | 101 to 107 GiB | yes; about 1.8 s per step, 17 to 19 W, 80 to 83 C, no pauses at the 1400 MHz cap | yes; about 0.5 s per step, 17 W, 73 to 77 C (earlier stack, 1600 MHz cap) | all variants below |
 | RTX Spark, 64 GB | about 45 GiB | yes with `max_sequence_length = 8192` in the recipe (one line); saves take about two minutes and most of the host memory | yes | measured by QA on a 38 GB-RAM unit: 20-step run at 1.3 s per step, 33 GB DCP per save |
 
 Disk: raw release 33 GB, processor cache 16 GB, converted model 16 GB, one DCP checkpoint 33 GB.
@@ -86,23 +93,30 @@ carries over between blocks except files on disk.
 # Block 1: interpreter, torch, preflight. $ROOT is the only path you choose; $SKILL is the directory holding this SKILL.md.
 $ROOT = "C:\cosmos3"; $VENV = "$ROOT\venv"; $PY = "$VENV\Scripts\python.exe"; $SKILL = "<directory of this SKILL.md>"
 New-Item -ItemType Directory -Force -Path $ROOT | Out-Null
-uv python install 3.13
-uv venv $VENV --python 3.13 --seed --no-config
+$env:UV_PYTHON_INSTALL_DIR = "$ROOT\uv-python"; $env:UV_CACHE_DIR = "$ROOT\uv-cache"   # ordinary folders: a packaged (MSIX) agent app redirects %APPDATA% and breaks uv's default location
+uv python install cpython-3.13-windows-aarch64-none      # the Arm64 build by name: an x64 uv resolves a bare "3.13" to x64 CPython
+$ARM_PY = (uv python find cpython-3.13-windows-aarch64-none | Select-Object -First 1).Trim()
+uv venv $VENV --python $ARM_PY --seed --no-config
 & $PY -c "import platform, sys; assert platform.machine() == 'ARM64', platform.machine(); print(platform.machine(), sys.version.split()[0])"
 & $PY -m pip install --only-binary=:all: --extra-index-url https://pypi.nvidia.com/nvtorch_oot/ "torch==2.15.0+cu134" "torchvision==0.29.0+cu134" "torchaudio==2.11.0+cu134"
-& $PY $SKILL\scripts\preflight_windows_arm64.py --allocation-gib 72    # 128 GB unit; use 32 on the 64 GB unit
+& $PY $SKILL\scripts\preflight_windows_arm64.py --allocation-gib 72 --output "$ROOT\preflight.json"    # 128 GB unit; use 32 on the 64 GB unit. Give this call a ten-minute timeout
 ```
 
 Expected: the preflight prints JSON with `"status": "PASS"`, `machine: ARM64`, the torch
-version, `torch_cuda: 13.4`, the device name and the total CUDA memory. The allocation gate
-allocates, writes, synchronizes and frees the requested buffer, so run it on an idle GPU.
+version, `torch_cuda: 13.4`, the device name and the total CUDA memory, and writes the same
+report to `--output`. The allocation gate allocates, writes, synchronizes and frees the
+requested buffer, so run it on an idle GPU. It is slow: about two minutes for the 72 GiB write
+alone and more than five minutes for a first run, which is longer than the default command
+timeout of most agent harnesses. Set a ten-minute timeout or run it in the background and read
+the output file; progress lines go to stderr while it works.
 
 ```powershell
 # Block 2: the framework at main + #303, its dependency set, TorchCodec, the DLL search path.
 $ROOT = "C:\cosmos3"; $VENV = "$ROOT\venv"; $PY = "$VENV\Scripts\python.exe"; $REPO = "$ROOT\cosmos-framework"; $SKILL = "<directory of this SKILL.md>"
 $TORCHCODEC_WHEEL = "<path to torchcodec-*+cu134-cp313-cp313-win_arm64.whl>"   # see references/windows-setup.md § TorchCodec
 & $PY -m pip install -r $SKILL\assets\requirements-windows-arm64.txt
-if (-not (Test-Path $REPO)) { git clone https://github.com/arif-ahmed-nv/cosmos-framework.git $REPO }   # until #303 merges; afterwards clone https://github.com/NVIDIA/cosmos-framework.git and check out main
+# The clone leaves Git LFS out (-c filter.lfs...): the skill needs none of the LFS media, and a Git without the git-lfs binary fails the checkout otherwise.
+if (-not (Test-Path $REPO)) { git clone -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.clean= -c filter.lfs.required=false https://github.com/arif-ahmed-nv/cosmos-framework.git $REPO }   # until #303 merges; afterwards clone https://github.com/NVIDIA/cosmos-framework.git and check out main
 git -C $REPO fetch origin windows-compat; git -C $REPO checkout -B windows-compat origin/windows-compat   # main + PR #303; the pull/303 refs exist only on NVIDIA/cosmos-framework, the fork branch holds the same commits
 & $PY -m pip install -e $REPO --no-deps
 & $PY -m pip install --no-deps $TORCHCODEC_WHEEL
@@ -113,14 +127,18 @@ git -C $REPO fetch origin windows-compat; git -C $REPO checkout -B windows-compa
 ```
 
 Expected: the three checks print the torch and torchcodec versions with `True`, the
-pyarrow-free import line, and the trainer's usage. If `configure_windows_arm64_dll_paths.py`
-reports a missing directory, add it with `--extra-dll-dir` (the FFmpeg `bin` of a self-built
-TorchCodec, for example); Python 3.13 does not resolve extension DLLs from `PATH`.
+pyarrow-free import line, and the trainer's usage. `configure_windows_arm64_dll_paths.py`
+requires only torch's `lib` directory and lists what it registered. Its note that no GStreamer
+directory was found is expected with a CI-built TorchCodec wheel, which is self-contained. A
+source-built TorchCodec needs its FFmpeg `bin` and GStreamer's `msvc_arm64\bin`: add them with
+`--extra-dll-dir` and `--force`. Python 3.13 does not resolve extension DLLs from `PATH`.
 
 ## Variant 2 — Convert the base model
 
-Reference: `references/windows-setup.md` § Model. Needs the Hugging Face gate for
-`nvidia/Cosmos3-Nano` accepted and `HF_TOKEN` in the shell. The converter also fetches the
+Reference: `references/windows-setup.md` § Model. `nvidia/Cosmos3-Nano` is public and was not
+gated when checked on 2026-11-06, so there is no gate to accept; keep `HF_TOKEN` in the shell
+if you have one. The download is about 33 GB: on a slow link, copy the release or the converted
+directory from a machine that already has it. The converter also fetches the
 `Qwen/Qwen3-VL-8B-Instruct` processor and runs on the CPU.
 
 ```powershell
@@ -164,17 +182,21 @@ powershell -ExecutionPolicy Bypass -File $SKILL\scripts\train_lora.ps1 `
   -Model "$ROOT\models\Cosmos3-Nano-VLM" -OutputRoot "$ROOT\out" -JobName smoke_20 `
   -TrainAnnotation "$ROOT\data\smoke\annotations_train.json" -TrainMedia "$ROOT\data\smoke\media" `
   -ValAnnotation "$ROOT\data\smoke\annotations_val.json" -ValMedia "$ROOT\data\smoke\media" `
-  -NumFrames 8 -MaxPixels 1179648 -SystemPrompt "You are a helpful assistant." -ClockCapMHz 1600
+  -NumFrames 8 -MaxPixels 1179648 -SystemPrompt "You are a helpful assistant." -ClockCapMHz 1400
 ```
 
-Expected, in order: the preflight line, `clock cap 1600 MHz applied`, the pacer armed, the
-model load, `LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params`,
+Expected from the launcher, in order: the command line; `clock cap 1400 MHz applied` in an
+elevated shell, or `clock cap NOT applied (...): uncapped, pacer only` in a standard shell (the
+job still runs; `-RequireCap` makes that case an error and `-ClockCapMHz 0` skips the attempt);
+`pacer armed`; the `RUN train_smoke_20 ... exit=0` line. In `<OutputRoot>\evidence\train_smoke_20.stdout.log`
+and `.stderr.log`: the model load, `LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params`,
 twenty `train/avg_loss` lines (the smoke set is learnable: the loss falls below 1.0 by the
 second epoch), a synchronous DCP save of about 33 GB under
 `<OutputRoot>\cosmos3_reasoner\cosmos_video_conversation_sft\<JobName>\checkpoints\epoch_2`,
 `Cosmos Framework video-conversation SFT training completed successfully`, the receipt under
-`<OutputRoot>\evidence\`, and `default clocks restored`. About 47 s for the first step and 1.3 s
-per step after warm-up on the 64 GB unit; about 1.1 s per step on the 128 GB unit.
+`<OutputRoot>\evidence\`. The launcher ends with `default clocks restored` or `no clock cap was
+applied; clocks unchanged`, then the run directory and the receipt line. About 47 s for the first step; after warm-up about 1.8 s per
+step on the 128 GB unit at the 1400 MHz cap and 1.3 s per step in QA's run on the 64 GB unit.
 
 ## Variant 4 — Export the merged model
 
@@ -217,8 +239,10 @@ the mixed setting fails at start.
   the pixel budget, then run the smoke set.
 - Export: `0 lora keys` in the index; the directory loads with transformers.
 - Evaluation: `results.json` row count equals the record count; the metrics summary exists.
-- Thermal: the receipt's `temp_c_max` and the pacer's pause count; a run that is several times
-  slower than the table above is a latched GPU (`references/thermal-operating-point.md`).
+- Thermal: the receipt's `temp_c_max`, the pacer's pause count and the clock-cap line; a run
+  that is several times slower than the table above is a latched GPU: confirm with
+  `scripts/thermal/gpu_probe.ps1` (about 70 TFLOP/s healthy, about 7 latched) and reboot
+  (`references/thermal-operating-point.md`).
 
 ## Reference files
 
@@ -226,8 +250,8 @@ the mixed setting fails at start.
 |---|---|
 | `references/windows-setup.md` | The environment: pins, dependency markers, FFmpeg and TorchCodec routes, the DLL `.pth`, the model conversion |
 | `references/training-overrides.md` | The eleven overrides and what each prevents, the attention keys, the environment block, inert overrides, the evaluator TOML |
-| `references/thermal-operating-point.md` | The limiter scripts, the measured operating point, the failure modes (hard reset, latched low-power state, clock limiter) |
-| `references/validation.md` | What was validated where: QA's lifecycle run on #303, the ITS fine-tuning ladder, the W14 history |
+| `references/thermal-operating-point.md` | The limiter scripts and the health probe, the measured operating point, what a standard shell cannot do, the failure modes (hard reset, latched low-power state, clock limiter) |
+| `references/validation.md` | What was validated where: QA's lifecycle run on #303, the ITS fine-tuning runs on both stacks, the W14 history, what is pending |
 | `assets/video_sft_nano_windows.toml` | The recipe (main's Nano video SFT with the Windows deviations) |
 | `assets/evaluate_binary.toml` | Evaluator template for yes/no video QA |
 | `assets/smoke/` | The synthetic smoke annotations; `scripts/make_smoke_set.py` writes the clips |
@@ -245,9 +269,13 @@ the mixed setting fails at start.
 - **Checkpoint memory.** Both DCP paths stage the whole state dict through host memory. #303
   makes saves synchronous and serial on Windows; a save still needs about the state-dict size
   free. Close everything else during saves. LoRA-only checkpoints are a follow-up.
-- **pyarrow, datasets, av, obstore, grpcio have no win_arm64 wheels.** The dependency file
-  marks them out; #303 makes pyarrow optional in the framework. Parquet features fail with a
-  clear `ModuleNotFoundError` where used.
+- **pyarrow, datasets and obstore have no win_arm64 wheels.** The dependency file marks them
+  out, with the pinned `av`; #303 makes pyarrow optional in the framework. Parquet features
+  fail with a clear `ModuleNotFoundError` where used.
+- **Other video libraries.** PyAV 19.0.2 ships a `win_arm64` abi3 wheel that installs on 3.13;
+  `opencv-python` and `decord` have none. An external evaluation harness that imports them
+  (VLMEvalKit style) needs a PyAV or TorchCodec reader in their place. The Framework evaluator
+  uses TorchCodec only.
 - **Two policy objects.** Overrides for the policy go to `model.config.policy.*`; the
   top-level `policy.*` key is accepted and not read by the model. The launcher sets both for the
   attention setting; do the same for `backbone.*` if you ever override it.
@@ -256,7 +284,14 @@ the mixed setting fails at start.
   from killing the run on a logged box-drawing character.
 - **Gloo at world size 1 is mandatory** (the trainer runs an unconditional barrier), which is
   why the five rendezvous variables and `USE_LIBUV=0` are set even for one process.
-- **Administrator rights are not required**; `LongPathsEnabled` off is fine for this layout.
+- **Administrator rights are needed for one thing: the GPU clock cap.** `nvidia-smi -lgc` and
+  `-rgc` answer "The current user does not have permission to change clocks" in a standard
+  shell. Setup, conversion, training under the pacer, export and evaluation all run without
+  elevation; `LongPathsEnabled` off is fine for this layout.
+- **An x64 uv and a packaged agent app both bite in Block 1.** An x64 `uv.exe` resolves `3.13`
+  to x64 CPython; a packaged (MSIX) desktop app redirects `%APPDATA%`, where uv keeps managed
+  interpreters, and the install fails with `Missing expected target directory for Python minor
+  version link`. Block 1 names the Arm64 build and moves both uv directories under `$ROOT`.
 
 ## Related skills
 
