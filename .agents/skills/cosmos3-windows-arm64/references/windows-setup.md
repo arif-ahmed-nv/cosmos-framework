@@ -49,9 +49,13 @@ Windows, with `platform_machine` markers:
 
 - skipped on ARM64, no `win_arm64` wheel: `pyarrow`, `obstore`, `datasets` (needs pyarrow);
   `duckdb` is installed in pyarrow's place for the mining scripts of the TAO skills;
-- `av` is skipped on ARM64 because the pinned 18.0.0 has no `win_arm64` wheel and the reasoner
-  path does not import it. PyAV 19.0.2 does ship a `win_arm64` abi3 wheel that installs on 3.13
-  if another tool needs it. `opencv-python` and `decord` have no `win_arm64` wheels (tester
+- `av`: the framework's pin 18.0.0 has no `win_arm64` wheel, so ARM64 gets PyAV 19.0.2, an
+  abi3 wheel that installs on 3.13 (`qwen-vl-utils` requires PyAV in any case, so pip installs
+  it with or without the line). The reasoner path does not import it;
+  `scripts/make_smoke_set.py` encodes the smoke clips with its bundled libx264 when the machine
+  has no ffmpeg executable, which is the normal case with a self-contained TorchCodec wheel.
+  `pip check` then reports three lines for cosmos-framework (obstore and pyarrow not installed,
+  `av<19` not met); all three are expected. `opencv-python` and `decord` have no `win_arm64` wheels (tester
   report, 2026-11-06): an external harness that imports them needs a PyAV or TorchCodec reader
   in their place. The Framework evaluator needs none of the three;
 - the x64 torch lines are marked out; torch comes from the index above.

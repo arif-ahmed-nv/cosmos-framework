@@ -178,7 +178,7 @@ the format; `scripts/make_smoke_set.py` writes ten synthetic 33-frame clips for 
 ```powershell
 # Smoke on the bundled synthetic set, then the same command on your data.
 $ROOT = "C:\cosmos3"; $VENV = "$ROOT\venv"; $PY = "$VENV\Scripts\python.exe"; $SKILL = "<directory of this SKILL.md>"
-& $PY $SKILL\scripts\make_smoke_set.py --out "$ROOT\data\smoke"     # needs ffmpeg on PATH or FFMPEG set
+& $PY $SKILL\scripts\make_smoke_set.py --out "$ROOT\data\smoke"     # encodes with ffmpeg if one is on PATH or in FFMPEG, otherwise with the PyAV of the dependency file
 powershell -ExecutionPolicy Bypass -File $SKILL\scripts\train_lora.ps1 `
   -Python $PY -Recipe $SKILL\assets\video_sft_nano_windows.toml `
   -Model "$ROOT\models\Cosmos3-Nano-VLM" -OutputRoot "$ROOT\out" -JobName smoke_20 `
@@ -272,8 +272,9 @@ the mixed setting fails at start.
   makes saves synchronous and serial on Windows; a save still needs about the state-dict size
   free. Close everything else during saves. LoRA-only checkpoints are a follow-up.
 - **pyarrow, datasets and obstore have no win_arm64 wheels.** The dependency file marks them
-  out, with the pinned `av`; #303 makes pyarrow optional in the framework. Parquet features
-  fail with a clear `ModuleNotFoundError` where used.
+  out and installs PyAV 19.0.2 in place of the framework's `av` 18.0.0 (`pip check` reports
+  those three lines; they are expected); #303 makes pyarrow optional in the framework. Parquet
+  features fail with a clear `ModuleNotFoundError` where used.
 - **Other video libraries.** PyAV 19.0.2 ships a `win_arm64` abi3 wheel that installs on 3.13;
   `opencv-python` and `decord` have none. An external evaluation harness that imports them
   (VLMEvalKit style) needs a PyAV or TorchCodec reader in their place. The Framework evaluator
