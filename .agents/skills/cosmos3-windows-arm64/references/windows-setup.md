@@ -155,4 +155,9 @@ The preflight is slow by design: the allocation step writes every page, about 1.
 (111 s for 72 GiB on a tester's unit), and a first run with the torch import and CUDA start-up
 can pass five minutes. Give the call a ten-minute timeout. Progress lines go to stderr; the JSON
 report goes to stdout and to `--output <file>`. Take the report from the file or from stdout
-alone; merging stderr into it (`2>&1`) breaks the JSON.
+alone and do not merge stderr into it (`2>&1`). Windows PowerShell 5.1 turns each stderr line
+of a native program into an error record: the first progress line then arrives as a
+`NativeCommandError` block in front of the JSON, which no longer parses, and in a script that
+sets `$ErrorActionPreference = 'Stop'` that first line ends the script with exit code 1 and no
+report, although the preflight itself passes. Without the redirection the progress lines go to
+the console, stdout parses by itself, and the exit code is the preflight's.
