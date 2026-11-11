@@ -219,13 +219,54 @@ The evaluation criterion (16 of 16) is **not met through the Framework evaluator
 "Is there a pedestrian on the road?" records whose answer is yes (clips 0, 2, 4, 6); it answers `no` to all eight
 pedestrian questions and gets all eight stopped-vehicle questions right, while reporting a loss of 0.00014. The
 exported model itself answers all sixteen correctly when driven through transformers directly. Nothing was
-tuned. Checked and excluded: the two attention keys (sdpa in training, sdpa attested in the evaluator), the
-training pixel budget (grid 4x18x30 in the training log), and the exported processor (the shipped
-`video_preprocessor_config.json` gives the same 4x18x30 grid for 8 frames of 480x288). Not established within
-the time-box: what the evaluator's own path does differently. The candidates left are its decode and resize
-stage (`FrameworkTorchCodecVideoPreprocessor`), the `apply_qwen3_vl_patch_embed_compat` step its runtime applies
-after loading, and its prompt assembly. The pedestrian is a 10x22 pixel rectangle, so a lower input resolution
-in the evaluator would produce exactly this pattern.
+tuned.
+
+### Why the evaluator disagreed (diagnosed after the report, same evening)
+
+The evaluator shows the model a different frame than training did. One process loaded the `mem_160` export
+through the evaluator's own runtime class and built the input for each of the 16 records five ways:
+
+| Input | Frame fed to the model | Video tokens | Timestamps in the prompt | Correct |
+|---|---|---|---|---|
+| Training input (`VideoSFTProcessor` as the run's `config.yaml` builds it), cut before the answer | 480x288 | 540 | 0.1, 0.4, 0.7, 1.0 s | 16 of 16 |
+| Evaluator path as shipped (also through `runtime.generate_tasks`: same answers) | **512x256** | 512 | **0.2, 1.2, 2.2, 3.2 s** | 12 of 16 |
+| Evaluator path, timestamps corrected only | 512x256 | 512 | 0.1, 0.4, 0.7, 1.0 s | 12 of 16 |
+| Evaluator path, frame size corrected only | 480x288, pixels identical to training | 540 | 0.2, 1.2, 2.2, 3.2 s | 16 of 16 |
+| Evaluator path, both corrected | identical to training, token for token | 540 | 0.1, 0.4, 0.7, 1.0 s | 16 of 16 |
+
+The frame size alone explains the four misses. Both differences come from the list-of-frames branch of
+`qwen_vl_utils.fetch_video` (0.0.14, the newest release and the one the dependency file pins), which the
+evaluator reaches through `CosmosFrameworkRuntime._prepare_transformers_batch`:
+
+- **Frame size.** `fetch_video` passes the merged factor (patch 16 x merge 2 = 32) to `fetch_image` in the
+  patch-size argument, and `fetch_image` multiplies by the merge size again. Each decoded frame is therefore
+  resized to multiples of 64 before the video-level resize: 288 rounds down to 256 and 480 up to 512. Training
+  hands its frames to the Hugging Face video processor, which rounds to multiples of 32 and leaves 480x288
+  alone. The pedestrian is 22 pixels tall on a 288-pixel frame, and the squashed frame moves it.
+- **Timestamps.** `_task_conversation` puts the sampled frame rate (6.56) on the video item as `fps`, but that
+  branch reads `sample_fps` and falls back to 2.0. The prompt's frame timestamps are then 0.2 to 3.2 s where
+  training saw 0.1 to 1.0 s. It did not change an answer here; a question about timing could be affected.
+
+Excluded by measurement: decoding (both sides decode the same eight 480x288 frames with the same reader and
+indices), the patch-embed compatibility step (not applied: CUDA capability 12.1, it applies to 8.0 only), the
+attention keys, the exported processor.
+
+Which sources are affected, measured with synthetic clips through both paths at the template's settings
+(8 frames, 147456 pixels per frame):
+
+| Source | Training frame | Evaluator frame | |
+|---|---|---|---|
+| 448x256, 512x256, 384x256 | unchanged | unchanged | identical pixels |
+| 854x480 | 512x256 | 512x256 | same size |
+| 480x288 (the smoke set) | 480x288 | 512x256 | differs |
+| 640x360, 1024x576, 1280x720, 1920x1080 | 512x288 | 512x256 | differs |
+| 640x480 | 416x320 | 384x320 | differs |
+| 512x320 | 480x288 | 448x256 | differs |
+
+The rule: the two agree when the frame training uses is a multiple of 64 in both directions. Every common
+16:9 source misses that at this pixel budget, so a participant who fine-tunes on 720p or 1080p clips is
+evaluated on vertically squashed frames. Scripts and logs: `step10_eval_input_diagnosis.py`,
+`step10_frame_size_check.py` and `evidence/step10/` in the hand-over folder.
 
 ## Reduced release (the tester's tip)
 
@@ -248,15 +289,22 @@ does not read those folders from the release at all, it fetches its own Wan2.2 V
 | `9091a58` | validated-fix: an uncapped probe reads lower, not higher; record capped against uncapped | probe, smoke runs |
 | `5d1f385` | validated-fix: Variant 2 downloads, time and disk as measured; reduced release confirmed | Variant 2 |
 | `f7f1b2f` | validated-fix: expected output of Variants 3 to 5 as framework e682c47 prints it; timeouts | Variants 3 to 5 |
+| `1878b7e` | validated-fix: the evaluator does not reproduce 480x288; say which frame sizes it evaluates faithfully | memorisation run, diagnosis |
 
 After `c1f0a74` Block 2 and Variant 3 were re-run from the start and passed. The text-only commits were not
 followed by a re-run.
 
 ## Framework-owned findings (recorded, not patched)
 
-1. **Evaluator against the model**: on a memorised export `cosmos-reasoner-evaluate` scores 12 of 16 where
-   transformers generation scores 16 of 16 (section above). Until this is understood, accuracies from the
-   evaluator on this stack are lower bounds, and the Variant 5 numbers of the hackathon are affected.
+1. **Evaluator input differs from training input**: `cosmos-reasoner-evaluate` resizes each frame to multiples
+   of 64 where training uses multiples of 32, and stamps the frames at 2 fps instead of the sampled rate
+   (§ Why the evaluator disagreed). On a memorised export it scores 12 of 16; with the frame size matched,
+   16 of 16. Evaluator accuracies are lower bounds for every source whose training frame is not a multiple of
+   64 in both directions, which includes the smoke set and all common 16:9 sizes. A fix belongs in
+   `cosmos_framework/inference/reasoner/runtime.py`: for frames the framework has already decoded, call the
+   processor the way training does (frames, `fps`, `do_sample_frames=False`, the processor's own resize)
+   instead of going through `qwen_vl_utils.process_vision_info`; passing `sample_fps` alongside `fps` fixes
+   the timestamps only. Not patched here.
 2. **The converter's hidden downloads**: `convert_model_to_vlm_safetensors` pulls the whole
    `Qwen/Qwen3-VL-8B-Instruct` repository, the Wan2.2 VAE and the AVAE sound tokenizer through a nested
    `uv run ... hf download` into the default Hugging Face cache, ignoring `vae\` and `sound_tokenizer\` in the
@@ -270,7 +318,9 @@ followed by a re-run.
 
 ## What remains unverified
 
-- Why the evaluator and transformers disagree (finding 1), and therefore every evaluator accuracy on this stack.
+- The size of the evaluator's error on real data (finding 1). The cause is established on the 16 synthetic
+  records; how many answers a squashed frame costs on a participant's own clips was not measured. A smoke set
+  at 448x256 or 512x256, which both paths would treat alike, was not trained or evaluated.
 - A packaged (MSIX) agent app: Block 1's uv folders, and the converter's nested `uv run`, which Block 1's
   variables do not reach.
 - An x64 `uv.exe` (this machine's is Arm64) and a Git that really lacks `git-lfs` (simulated).
@@ -289,7 +339,9 @@ followed by a re-run.
 
 ## State left on the machine
 
-Default clocks restored after every job; the last probe read 72.8 TFLOP/s, `HEALTHY`. Kept under the root: the
+Default clocks restored after every job; the last probe of the validation read 72.8 TFLOP/s, `HEALTHY`, and the
+two probes before the diagnosis jobs later that evening read 70.7, `HEALTHY`, `default clocks restored`. Kept
+under the root: the
 converted model (17.6 GB), the `mem_160` export (17.6 GB), the venv, the logs and receipts. Deleted: the raw
 release, all four checkpoints, the `smoke_20` export. Outside the root, the skill's own commands wrote to the
 default Hugging Face cache: the Qwen3-VL weights (17.6 GB, kept because they take an hour to fetch) and the
