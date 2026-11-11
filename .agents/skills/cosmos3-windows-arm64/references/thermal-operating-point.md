@@ -10,10 +10,10 @@ time; treat them as the starting point for another unit, not as its specificatio
 
 | Script | Role |
 |---|---|
-| `clock_cap.ps1 -Apply <MHz>` / `-Restore` / (no args) | Apply or restore the SM clock cap with `nvidia-smi -lgc` / `-rgc`; without arguments it probes which clock and power controls the driver accepts and leaves nothing applied. Changing clocks needs an elevated shell: `-Apply` and `-Restore` exit 0 when the driver accepted the request and with nvidia-smi's code (4, no permission) when it refused. |
+| `clock_cap.ps1 -Apply <MHz>` / `-Restore` / (no args) | Apply or restore the SM clock cap with `nvidia-smi -lgc` / `-rgc`; without arguments it probes which clock and power controls the driver accepts and leaves nothing applied. Changing clocks needs an elevated shell: `-Apply` and `-Restore` exit 0 when the driver accepted the request and with nvidia-smi's code (4, no permission) when it refused. The confirmation is the driver's `GPU clocks set to "(gpuClkMin N, gpuClkMax N)"` line in the log; the read-back lines show the momentary SM clock, which at idle is not the cap. |
 | `run_measured.ps1 -Tag <t> -CommandLine '<cmd>' [-Python <exe>] [-EvidenceDir <dir>] [-MaxStartTempC 62] [-TimeoutSec 3600] [-Spinner]` | Waits until the GPU is at or below the start temperature, runs the command with a 1 s sampler (`gpu_sampler.ps1`), writes `<tag>.receipt.json`, `<tag>.samples.csv` (+ `.summary.json`), stdout and stderr logs, and health snapshots before and after. `-Spinner` refuses to time a run on a degraded GPU. |
 | `thermal_pacer.ps1 -Tag <t> [-PauseC 84] [-ResumeC 78] [-LimitC 87]` | Runs beside a measured job: suspends the whole job tree (NtSuspendProcess, descendants included) at the pause temperature, resumes it at the resume temperature, kills the tree at the limit, and writes `<tag>.pacer.json` with the pauses and paused seconds. The cap stays applied, so unpaused steps remain comparable. |
-| `gpu_probe.ps1 [-Seconds 8] [-Python <exe>] [-CapMHz 1600] [-FloorTflops 30]` | Eight-second bf16 matmul loop (`gpu_probe.py`) with the GPU otherwise idle, sampled once a second; prints TFLOP/s and a `probe verdict: HEALTHY` or `DEGRADED` line and exits 0 or 3. It tries the 1600 MHz cap, says whether the driver accepted it, and restores the default clocks if it did; in a standard shell it probes uncapped. |
+| `gpu_probe.ps1 [-Seconds 8] [-Python <exe>] [-CapMHz 1600] [-FloorTflops 30]` | Eight-second bf16 matmul loop (`gpu_probe.py`) with the GPU otherwise idle, sampled once a second; prints TFLOP/s and a `probe verdict: HEALTHY` or `DEGRADED` line and exits 0 or 3. It tries the 1600 MHz cap, says whether the driver accepted it, and restores the default clocks if it did; in a standard shell it probes uncapped, and that reading can be lower than the capped one (40 to 42 against 70 to 72 TFLOP/s on 2026-11-10) without the GPU being at fault. |
 | `gpu_spinner.py [seconds]` | Sustained matmul load for diagnostics and the `-Spinner` gate. |
 
 Pattern for one job (the model skill's launcher does this for you):
@@ -38,7 +38,11 @@ way (`-RequireCap` stops instead; `-ClockCapMHz 0` skips the attempt). It restor
 when it applied a cap.
 
 Uncapped, a tester's unit ran the 480x288 input at 1995 MHz, 24 to 30 W and 66 C early in a
-short run. A short smoke is fine that way. A long run uncapped will reach the pause temperature
+short run. On the 128 GB unit (2026-11-10, three 20-step smoke runs, `Reliability` clocks event
+reason active throughout) the uncapped runs took 2.2 to 2.3 s per step at 26 to 28 W (peak 33 W)
+and reached 60 to 61 C, in a standard shell and with `-ClockCapMHz 0` alike; the run at the
+1400 MHz cap took 1.8 s per step at 14 W (peak 15 W) and reached 51 C. There the cap was faster
+as well as cooler. A short smoke is fine uncapped. A long run uncapped will reach the pause temperature
 and cycle the pacer, and each resume is a chance of the latched state below: use an elevated
 shell for anything longer than a few minutes.
 
@@ -86,7 +90,10 @@ Healthy probe reading: about 70 TFLOP/s at 1599 MHz and 39 W. A reading near 7 T
 - **Reliability clock limiter** after display-driver events (`clocks_event_reasons.active`
   non-zero at idle): every speed number taken under it is low by about 2.4x. The flag is not a
   dependable test for the latched state above; the probe is. Check the probe before any speed
-  claim.
+  claim. Measured on 2026-11-10 with the flag at `0x400` (`Reliability: Active` in
+  `nvidia-smi -q`, two days after an unclean restart): work under an accepted clock cap was not
+  slowed (probe 70 to 72 TFLOP/s at the 1600 MHz cap, training 1.8 s per step at 1400 MHz);
+  uncapped work was (probe 40 to 42 TFLOP/s, training 2.2 to 2.3 s per step).
 
 ## Caveats
 

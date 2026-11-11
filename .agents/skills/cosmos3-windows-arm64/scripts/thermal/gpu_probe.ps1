@@ -7,8 +7,10 @@
 # Usage: powershell -ExecutionPolicy Bypass -File gpu_probe.ps1 [-Seconds 8] [-Python <venv>\Scripts\python.exe] [-CapMHz 1600]
 #        [-FloorTflops 30] [-LogPath <file>]
 # -Python defaults to TAO_WINDOWS_PYTHON, then python on PATH. The cap needs an elevated shell; in a standard shell the probe
-# says so and runs uncapped (the reading is then higher than the capped reference, and the 30 TFLOP/s floor still separates a
-# healthy GPU from a latched one). -CapMHz 0 skips the cap. Exit code: 0 healthy, 3 degraded, otherwise the interpreter's error.
+# says so and runs uncapped. An uncapped reading is not comparable with the capped reference and can be lower: on one healthy
+# N1X it was 40 to 42 TFLOP/s at about 1500 MHz and 37 W (nvidia-smi -q showed the Reliability clocks event reason active)
+# against 70 to 72 capped in the same minutes. The 30 TFLOP/s floor still separates either reading from a latched GPU at about 7.
+# -CapMHz 0 skips the cap. Exit code: 0 healthy, 3 degraded, otherwise the interpreter's error.
 param([double]$Seconds = 8, [string]$Python = $env:TAO_WINDOWS_PYTHON, [int]$CapMHz = 1600, [double]$FloorTflops = 30,
       [string]$LogPath = (Join-Path (Get-Location) 'evidence\clock_cap.log'))
 $py = if ($Python) { $Python } else { 'python' }
