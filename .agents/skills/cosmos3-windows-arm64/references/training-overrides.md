@@ -88,8 +88,10 @@ Template: `assets/evaluate_binary.toml`. Keys that matter:
 - `[dataset] annotation_path`, `media_dir`, `system_prompt`: the same LLaVA records as training.
 - `[model] model_name`: the exported directory, or the converted base model for a baseline.
 - `[vision]`: `video_decoder = "torchcodec-cuda-on-demand"`, `decoder_device = "cuda"`,
-  `num_frames`, `min_pixels`, `max_pixels` per frame (147456 with `min_pixels` 4096 reproduces
-  8 frames at 480x288), and the loader: `dataloader_num_workers = 1` with
+  `num_frames`, `min_pixels`, `max_pixels` per frame (147456 with `min_pixels` 4096 is the
+  training budget for 8 frames; it does not make the evaluator reproduce 480x288, because the
+  evaluator rounds each frame to multiples of 64 and feeds 512x256, see SKILL.md Variant 5 and
+  `validation-spark-a.md` § Why the evaluator disagreed), and the loader: `dataloader_num_workers = 1` with
   `dataloader_prefetch_factor = 2` and the spawn context, or zero workers with prefetch
   disabled; the mixed setting fails at start.
 - `results_dir`: receives `<model directory name>\freeform\general\results.json` (one row per

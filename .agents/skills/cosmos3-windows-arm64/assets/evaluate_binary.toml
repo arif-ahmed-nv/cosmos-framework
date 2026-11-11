@@ -28,7 +28,8 @@ video_decoder = "torchcodec-cuda-on-demand"
 decoder_device = "cuda"
 num_frames = 8
 min_pixels = 4096
-max_pixels = 147456          # per frame; 8 frames at 480x288 as in the recipe v2 input
+max_pixels = 147456          # per frame, the training budget for 8 frames. The evaluator rounds each frame to multiples of 64
+                             # (training: 32), so a 480x288 clip is evaluated at 512x256; see SKILL.md, Variant 5
 dataloader_num_workers = 1   # 1 worker + prefetch + spawn, or 0 workers with prefetch disabled; the mix fails at start
 dataloader_prefetch_factor = 2
 dataloader_multiprocessing_context = "spawn"
