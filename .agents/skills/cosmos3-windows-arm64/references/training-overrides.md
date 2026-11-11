@@ -92,6 +92,10 @@ Template: `assets/evaluate_binary.toml`. Keys that matter:
   8 frames at 480x288), and the loader: `dataloader_num_workers = 1` with
   `dataloader_prefetch_factor = 2` and the spawn context, or zero workers with prefetch
   disabled; the mixed setting fails at start.
-- `results_dir`: receives `results.json` (one row per record: id, question, response, gt, task)
-  and the metrics summary. `WEIGHTED_SCORE 0` in the log is a reporting artifact; read
-  `overall.accuracy`.
+- `results_dir`: receives `<model directory name>\freeform\general\results.json` (one row per
+  record: `video_id` holding the record id, `question`, `response`, `full_response`, `gt`,
+  `task`) and `<model directory name>\freeform\metrics.json`. `WEIGHTED_SCORE 0` in the log is
+  a reporting artifact; read `overall.accuracy`.
+- `[model] attn_implementation = "sdpa"` is accepted and attested in the log
+  (`COSMOS_ATTENTION_IMPLEMENTATION_ATTESTATION requested=sdpa actual=sdpa`); it did not change
+  the result in the one comparison made (`validation-spark-a.md`).

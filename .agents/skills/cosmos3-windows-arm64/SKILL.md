@@ -200,15 +200,30 @@ powershell -ExecutionPolicy Bypass -File $SKILL\scripts\train_lora.ps1 `
 Expected from the launcher, in order: the command line; `clock cap 1400 MHz applied` in an
 elevated shell, or `clock cap NOT applied (...): uncapped, pacer only` in a standard shell (the
 job still runs; `-RequireCap` makes that case an error and `-ClockCapMHz 0` skips the attempt);
-`pacer armed`; the `RUN train_smoke_20 ... exit=0` line. In `<OutputRoot>\evidence\train_smoke_20.stdout.log`
-and `.stderr.log`: the model load, `LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params`,
-twenty `train/avg_loss` lines (the smoke set is learnable: the loss falls below 1.0 by the
-second epoch), a synchronous DCP save of about 33 GB under
+`pacer armed`; the `RUN train_smoke_20 ... exit=0` line. In `<OutputRoot>\evidence\train_smoke_20.stdout.log`:
+the model load (about 70 s), `LoRA injection successful: 144 modules wrapped, 15,335,424 trainable LoRA params`,
+twenty lines of the form `Iteration 2: Hit counter: 2/50 | Loss: 0.1967 | Time: 2.84s` (only the
+first fifty steps of a run are logged this way), `Validation loss (epoch 2/2): ...` after each
+epoch, `Checkpoint save completed: Time taken: ... seconds` for a synchronous DCP save of
+35.3 GB (32.8 GiB) under
 `<OutputRoot>\cosmos3_reasoner\cosmos_video_conversation_sft\<JobName>\checkpoints\epoch_2`,
-`Cosmos Framework video-conversation SFT training completed successfully`, the receipt under
-`<OutputRoot>\evidence\`. The launcher ends with `default clocks restored` or `no clock cap was
-applied; clocks unchanged`, then the run directory and the receipt line. About 47 s for the first step; after warm-up about 1.8 s per
-step on the 128 GB unit at the 1400 MHz cap and 1.3 s per step in QA's run on the 64 GB unit.
+and `Done with training.` as the last line. The run directory's `status.json` holds one JSON
+object per line: every step with its loss (`Training epoch 1/2, step 3/10 (global step 3/20) -
+Loss: ...`), and at the end `Cosmos Framework video-conversation SFT training completed
+successfully`. The strings `avg_loss` and `completed successfully` appear there and not in the
+two logs. The receipt is under `<OutputRoot>\evidence\`. The launcher ends with `default clocks
+restored` or `no clock cap was applied; clocks unchanged`, then the run directory and the
+receipt line.
+
+With one record per step the smoke loss swings between about 0.01 and 1.5: in three runs the
+epoch means were 0.49 and 0.59 and the validation loss fell from 0.45 to 0.34. Twenty steps
+prove the mechanics, not learning. The check for learning is the same command with the recipe
+lengthened to ten epochs of sixteen steps: epoch means 0.533, 0.115, 0.0005 and then 0.0000,
+ten minutes (`references/validation-spark-a.md`).
+
+Time: the call takes about five minutes (281 s measured: 26 to 89 s for the first step, about
+1.8 s per step at the 1400 MHz cap on the 128 GB unit, two minutes for the save), so give it a
+ten-minute timeout. QA's run on the 64 GB unit took 1.3 s per step.
 
 ## Variant 4 — Export the merged model
 
@@ -220,7 +235,9 @@ $RUN = "$ROOT\out\cosmos3_reasoner\cosmos_video_conversation_sft\smoke_20"
 ```
 
 Expected: 750 tensors, 5 shards, 16.3 GiB, `0 lora keys`. The export is a complete Hugging Face
-directory that the evaluator below, transformers, or a vLLM server can load.
+directory that the evaluator below, transformers, or a vLLM server can load. It takes about
+five minutes (307 s measured) and needs 17.6 GB of disk next to the 35.3 GB checkpoint: give
+the call a ten-minute timeout.
 
 ## Variant 5 — Evaluate
 
@@ -235,8 +252,14 @@ $env:RANK = "0"; $env:WORLD_SIZE = "1"; $env:LOCAL_RANK = "0"; $env:PYTHONIOENCO
 & "$VENV\Scripts\cosmos-reasoner-evaluate.exe" --config "$ROOT\out\eval_smoke.toml"
 ```
 
-Expected: one `results.json` row per record (`id`, `question`, `response`, `gt`, `task`) under
-`results_dir`, and the summary with overall and balanced accuracy, precision, recall and F1. The
+Expected: one `results.json` row per record (`video_id`, which holds the record id, `question`,
+`response`, `full_response`, `gt`, `task`) in
+`<results_dir>\<model directory name>\freeform\general\`, the summary on stdout (overall and
+balanced accuracy, precision, recall, F1) and the same numbers in
+`<results_dir>\<model directory name>\freeform\metrics.json`. About 40 seconds for a handful of
+records. Read the accuracy as a lower bound for now: on 2026-11-10 a model that had memorised
+its 16 training records (training loss 0.0000) scored 12 of 16 in this evaluator and 16 of 16
+with plain transformers generation from the same export (`references/validation-spark-a.md`). The
 binary scorer needs both classes present in the ground truth; `WEIGHTED_SCORE 0` in the log is
 a known reporting artifact, read `overall.accuracy`. The data loader needs one worker with
 prefetch and the spawn context (the asset's defaults) or zero workers with prefetch disabled;
@@ -264,6 +287,7 @@ the mixed setting fails at start.
 | `references/training-overrides.md` | The eleven overrides and what each prevents, the attention keys, the environment block, inert overrides, the evaluator TOML |
 | `references/thermal-operating-point.md` | The limiter scripts and the health probe, the measured operating point, what a standard shell cannot do, the failure modes (hard reset, latched low-power state, clock limiter) |
 | `references/validation.md` | What was validated where: QA's lifecycle run on #303, the ITS fine-tuning runs on both stacks, the W14 history, what is pending |
+| `references/validation-spark-a.md` | The blocks of this skill run as written on a 128 GB unit on 2026-11-10 (stable torch `2.15.0+cu134`, TorchCodec `0.18.0.dev20261005+cu134`, framework `e682c47`): first-attempt results, timings, the fixes that followed, open findings |
 | `assets/video_sft_nano_windows.toml` | The recipe (main's Nano video SFT with the Windows deviations) |
 | `assets/evaluate_binary.toml` | Evaluator template for yes/no video QA |
 | `assets/smoke/` | The synthetic smoke annotations; `scripts/make_smoke_set.py` writes the clips |

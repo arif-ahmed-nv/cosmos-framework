@@ -78,6 +78,11 @@ either failure.
 
 ## Pending (as of 2026-11-10)
 
+Update, 2026-11-10 evening: the first four items below were run on the 128 GB unit and are
+reported in `validation-spark-a.md` (stable torch pairing, the first-day changes at both
+privilege levels, the reduced release, the smoke loss on that unit). Still open from this
+list: the smoke loss on the 64 GB unit, a packaged agent app, an x64 uv, and the eval cases.
+
 - This skill's commands on the stable torch `2.15.0+cu134` pairing with a matching TorchCodec:
   the QA run and the ITS runs used the September nightly pairing.
 - The changes made on 2026-11-10 after a tester's first-day report: the clock cap in an
