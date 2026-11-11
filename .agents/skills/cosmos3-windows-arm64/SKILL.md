@@ -257,10 +257,17 @@ Expected: one `results.json` row per record (`video_id`, which holds the record 
 `<results_dir>\<model directory name>\freeform\general\`, the summary on stdout (overall and
 balanced accuracy, precision, recall, F1) and the same numbers in
 `<results_dir>\<model directory name>\freeform\metrics.json`. About 40 seconds for a handful of
-records. Read the accuracy as a lower bound for now: on 2026-11-10 a model that had memorised
-its 16 training records (training loss 0.0000) scored 12 of 16 in this evaluator and 16 of 16
-with plain transformers generation from the same export (`references/validation-spark-a.md`). The
-binary scorer needs both classes present in the ground truth; `WEIGHTED_SCORE 0` in the log is
+records. The evaluator does not always show the model the frame size it was trained on: at
+this framework commit it rounds each frame to multiples of 64 pixels, training rounds to
+multiples of 32. The two agree only when the frame that training uses is a multiple of 64 in
+both directions (448x256, 512x256, 384x256; an 854x480 source lands on 512x256 in both). They
+differ for the 480x288 smoke set and for 16:9 sources such as 640x360, 1280x720 and 1920x1080
+(training 512x288, evaluator 512x256), and then the accuracy is a lower bound: a model that
+had memorised its 16 training records scored 12 of 16 in this evaluator and 16 of 16 once the
+frame size matched (`references/validation-spark-a.md` § Why the evaluator disagreed). On the
+smoke set, read Variant 5 as "the evaluator runs", not as an accuracy. For your own clips,
+scale them to a size from the first list before training, so that both sides see the same
+frames. The binary scorer needs both classes present in the ground truth; `WEIGHTED_SCORE 0` in the log is
 a known reporting artifact, read `overall.accuracy`. The data loader needs one worker with
 prefetch and the spawn context (the asset's defaults) or zero workers with prefetch disabled;
 the mixed setting fails at start.
