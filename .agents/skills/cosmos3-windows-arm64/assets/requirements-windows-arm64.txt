@@ -124,9 +124,9 @@ six==1.17.0
 sympy==1.14.0
 termcolor==3.3.0
 tokenizers==0.22.2
-torch==2.13.0+cu130; platform_machine != "ARM64"  # ARM64: NVIDIA WoA Torch nightly, installed first (cosmos3-windows-arm64.md)
-torchcodec==0.14.0+cu130; platform_machine != "ARM64"  # ARM64: build torchcodec from source (cosmos3-windows-arm64.md)
-torchvision==0.28.0+cu130; platform_machine != "ARM64"  # ARM64: from the WoA Torch nightly index
+torch==2.13.0+cu130; platform_machine != "ARM64"  # ARM64: torch 2.15.0+cu134 from the NVIDIA Windows-on-Arm index, installed first (SKILL.md Block 1)
+torchcodec==0.14.0+cu130; platform_machine != "ARM64"  # ARM64: the CI-built TorchCodec wheel, installed after this file (SKILL.md Block 2)
+torchvision==0.28.0+cu130; platform_machine != "ARM64"  # ARM64: from the same index as torch (SKILL.md Block 1)
 tqdm==4.70.0
 transformers==4.57.6
 typeguard==4.6.0

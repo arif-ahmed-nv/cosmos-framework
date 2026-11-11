@@ -118,13 +118,13 @@ under Windows PowerShell 5.1 the first progress line then becomes an error recor
 `$ErrorActionPreference = 'Stop'` it ends the script before the report is printed.
 
 ```powershell
-# Block 2: the framework at main + #303, its dependency set, TorchCodec, the DLL search path.
+# Block 2: the framework at the validated PR #303 commit, its dependency set, TorchCodec, the DLL search path.
 $ROOT = "C:\cosmos3"; $VENV = "$ROOT\venv"; $PY = "$VENV\Scripts\python.exe"; $REPO = "$ROOT\cosmos-framework"; $SKILL = "<directory of this SKILL.md>"
-$TORCHCODEC_WHEEL = "<path to torchcodec-*+cu134-cp313-cp313-win_arm64.whl>"   # see references/windows-setup.md § TorchCodec
+$TORCHCODEC_WHEEL = "<path to torchcodec-0.18.0.dev20261005+cu134-cp313-cp313-win_arm64.whl>"   # the wheel validated with this torch; see references/windows-setup.md § TorchCodec
 & $PY -m pip install -r $SKILL\assets\requirements-windows-arm64.txt
 # The clone leaves Git LFS out (-c filter.lfs...): the skill needs none of the LFS media, and a Git without the git-lfs binary fails the checkout otherwise.
 if (-not (Test-Path $REPO)) { git clone -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.clean= -c filter.lfs.required=false https://github.com/arif-ahmed-nv/cosmos-framework.git $REPO }   # until #303 merges; afterwards clone https://github.com/NVIDIA/cosmos-framework.git and check out main
-git -C $REPO fetch origin windows-compat; git -C $REPO checkout -B windows-compat origin/windows-compat   # main + PR #303; the pull/303 refs exist only on NVIDIA/cosmos-framework, the fork branch holds the same commits
+git -C $REPO fetch origin windows-compat; git -C $REPO checkout --detach e682c47a241650d27e912b2d90336ef44cc2ffd3   # the PR #303 commit this skill was validated on; the branch moves while the PR is in review, the pin does not
 & $PY -m pip install -e $REPO --no-deps
 & $PY -m pip install --no-deps $TORCHCODEC_WHEEL
 & $PY $SKILL\scripts\configure_windows_arm64_dll_paths.py --venv $VENV
@@ -133,8 +133,9 @@ git -C $REPO fetch origin windows-compat; git -C $REPO checkout -B windows-compa
 (& $PY -m cosmos_framework.scripts.train --help) | Select-Object -First 3    # the parentheses let python finish; without them Select-Object cuts the pipe and the block ends with exit code -1
 ```
 
-Expected: the three checks print the torch and torchcodec versions with `True`, the
-pyarrow-free import line, and the trainer's usage. `configure_windows_arm64_dll_paths.py`
+Expected: `HEAD is now at e682c47` from the checkout (a detached HEAD is intended), then the
+three checks print the torch and torchcodec versions with `True`, the pyarrow-free import
+line, and the trainer's usage. `configure_windows_arm64_dll_paths.py`
 requires only torch's `lib` directory and lists what it registered. Its note that no GStreamer
 directory was found is expected with a CI-built TorchCodec wheel, which is self-contained. A
 source-built TorchCodec needs its FFmpeg `bin` and GStreamer's `msvc_arm64\bin`: add them with

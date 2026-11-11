@@ -66,8 +66,9 @@ without it; Parquet features fail with a clear `ModuleNotFoundError` where they 
 ## The framework
 
 `main` with PR #303 ("make training importable and runnable on native Windows"). Until it
-merges: clone `arif-ahmed-nv/cosmos-framework` and check out `windows-compat` (main plus the PR; the
-`pull/303` refs exist only on `NVIDIA/cosmos-framework`, the fork branch holds the same commits). Install editable with `--no-deps` (the dependency file
+merges: clone `arif-ahmed-nv/cosmos-framework`, fetch `windows-compat` and check out commit `e682c47`
+(the PR as validated on 2026-11-10; the branch itself moves while the PR is in review, so Block 2 pins
+the commit and a later head is not validated until this file says so). Install editable with `--no-deps` (the dependency file
 already satisfied everything). Checkouts without #303 fail on this platform at import (pyarrow),
 at the first training step (attention backend) or at the first checkpoint save (statvfs, libuv,
 pinned staging); do not patch them, update.
@@ -86,13 +87,21 @@ your exact torch is mandatory. Three routes, in order of preference:
 
 1. **A wheel built for your torch (win_arm64, CUDA 13.4, cp313).** NVIDIA's Windows-on-Arm
    PyTorch team builds TorchCodec wheels in its CI (internal distribution today; public
-   distribution through the same channel as torch is in preparation). These wheels are
-   self-contained: they bundle the FFmpeg 8 libraries, libjpeg and libpng, so no FFmpeg or
-   GStreamer install is needed. Install with `--no-deps` and verify with
-   `from torchcodec.decoders import VideoDecoder`.
+   distribution through the same channel as torch is in preparation). The wheel validated with
+   `torch 2.15.0+cu134` is `torchcodec-0.18.0.dev20261005+cu134-cp313-cp313-win_arm64.whl`.
+   It is self-contained: `site-packages\torchcodec.libs` carries the FFmpeg 8 libraries
+   (`avcodec-62.dll`), libjpeg, libpng, zlib and nvJPEG, so no FFmpeg or GStreamer install is
+   needed. The `dev20261105` build bundles FFmpeg 9 and decodes as well; no training was run
+   with it. Install with `--no-deps` and verify with
+   `from torchcodec.decoders import VideoDecoder`. For any other build, check before you rely on
+   it: `Get-ChildItem $VENV\Lib\site-packages\torchcodec.libs\avcodec-*.dll`. No match means
+   the wheel does not bundle FFmpeg: install the FFmpeg shared build of the major version the
+   wheel was built for and register its `bin` with the `.pth` helper (`--extra-dll-dir`,
+   `--force`).
 2. **Build from source** against the installed torch: clone `pytorch/torchcodec`, install the
-   FFmpeg 9 Windows ARM64 shared GPL build
-   (`https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-winarm64-gpl-shared-9.0.zip`)
+   FFmpeg 9 Windows ARM64 shared LGPL build
+   (`https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-winarm64-lgpl-shared-9.0.zip`;
+   the validated build below used the GPL variant of the same release, the LGPL one is untested)
    and the GStreamer 1.28 MSVC ARM64 runtime (for `jpeg8.dll` and `png16.dll`), build with CUDA
    enabled, and register FFmpeg's `bin` and GStreamer's `msvc_arm64\bin` with the `.pth` helper.
    The validated build was `torchcodec 0.17.0a0` with CUDA 13.4 NVDEC video, nvJPEG, CPU JPEG

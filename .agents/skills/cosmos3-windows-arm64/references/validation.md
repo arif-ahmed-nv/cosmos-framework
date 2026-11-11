@@ -26,7 +26,9 @@ guards, no overrides, `toml` uninstalled: config import, the one-step smoke, a 2
 (train loss 2.17, validation 4.55 to 4.31), two 33 GB DCP saves at 132 s each, two exports with zero residual LoRA keys and
 two evaluations all passed; the sdpa and synchronous-save fallbacks engaged on their own. Unit tests: 12 passed, 1 skipped,
 3 failed, the failures being POSIX-only `os.statvfs` mocks. The two code findings (a second `toml` import in
-`utils/workflow_status.py`, the statvfs mocks) are fixed in 69fee1f, the head this skill pins.
+`utils/workflow_status.py`, the statvfs mocks) were fixed in 69fee1f. That head was rebased onto main on
+2026-11-10 and became e682c47, the commit Block 2 pins and the one the skill's blocks were run on
+(`validation-spark-a.md`). A later test-only commit on the PR branch (0e84637, `dcp_test.py`) is not part of the pin.
 
 ## Fine-tuning results on the earlier stack (ITS work, 2026-10-30 to 11-04)
 

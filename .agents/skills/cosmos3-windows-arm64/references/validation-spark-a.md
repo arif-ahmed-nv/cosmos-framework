@@ -53,7 +53,7 @@ Stream checks with `--allocation-gib 0`:
   code 1 at the first progress line, which PowerShell 5.1 raises as a terminating `NativeCommandError`
   (`python.exe : preflight: importing torch (...)`); no report is printed. With the default preference the call
   returns 17 objects (2 `ErrorRecord`, 15 strings), exit code 0, and the merged text does not parse. The skill said
-  only that merging "breaks the JSON"; the wording was corrected (`644a759`).
+  only that merging "breaks the JSON"; the wording was corrected (`fcf111f`).
 
 ## TorchCodec for the stable torch
 
@@ -87,9 +87,9 @@ First attempt: **fail on the exit code**, with every expected line printed. Wall
   dependencies; working tree clean; the four `filter.lfs.*` settings are stored in the clone.
 - The defect: the last line, `& $PY -m cosmos_framework.scripts.train --help | Select-Object -First 3`, leaves
   `$LASTEXITCODE` at -1 because `Select-Object` closes the pipe; a harness reports the block as failed. Fixed by
-  putting the call in parentheses (`0ad022c`); the block re-run from the start ended with exit code 0 in 29.9 s.
+  putting the call in parentheses (`002d58c`); the block re-run from the start ended with exit code 0 in 29.9 s.
 - The block needs a long timeout too: `pip install -r` alone took 320 s. The skill asked for one only on the
-  preflight (`ac77ef0`).
+  preflight (`4269bb6`).
 - `pip check` after the block reports three lines, all expected on this platform: obstore and pyarrow not
   installed, and `av<19` not met because PyAV 19.0.2 is installed (pulled in by `qwen-vl-utils`).
 
@@ -111,7 +111,7 @@ DLL helper:
 | `--dry-run` on the real venv | 0 | `would write ...\_win_tao_dlldirs.pth`, then torch `lib`, the CUDA 13.4 `bin\arm64`, the cuDNN `bin\arm64` and GStreamer's `msvc_arm64\bin`. It lists what it found and does not label which entries are optional |
 | the same with nothing under `ProgramFiles` (replaced inside the interpreter) | 0 with `--force`; 2 without | with `--force`: torch `lib` only, then `note: no GStreamer directory registered (optional). ...`. Without `--force` a dry run on a venv that already has a different `.pth` stops with `refusing to replace different DLL bootstrap ...; use --force` |
 | a bare `uv venv` without torch | 2 | `required DLL directory is missing: ...\bare-venv\Lib\site-packages\torch\lib (install torch into this venv first)` |
-| the bare venv with nothing under `ProgramFiles` | 2 | before the fix: `no DLL directories were found`, which does not name torch `lib`; this is the state of a participant's machine. Fixed (`6e3d587`), now the same message as the row above |
+| the bare venv with nothing under `ProgramFiles` | 2 | before the fix: `no DLL directories were found`, which does not name torch `lib`; this is the state of a participant's machine. Fixed (`441be41`), now the same message as the row above |
 
 ## Elevation, clock cap and probe, as measured
 
@@ -127,7 +127,7 @@ The elevated column is this session; the standard column is one script per check
 The uncapped probe reading is lower than the capped one, not higher as the script's comment said. It is not the
 privilege level: an elevated probe with `-CapMHz 0` read 39.7 TFLOP/s. `nvidia-smi -q` showed
 `Clocks Event Reasons: Reliability: Active` (flag `0x400`) throughout. Comment and thermal reference corrected
-(`9091a58`).
+(`c0d7385`).
 
 `clock_cap.log` of a refused call, as written by the launcher. The refusal text arrives clean under PowerShell
 5.1, with no error-record wrapping; the driver line is doubled because the query lists the NPU as a second device:
@@ -146,14 +146,14 @@ Terminating early due to previous errors.
 | Block | First attempt | Wall time | Expected line | What was seen | Error, fix, owner |
 |---|---|---|---|---|---|
 | Variant 1 Block 1 | pass | 377.7 s | `"status": "PASS"` | `"status": "PASS"`, exit 0 | none |
-| Variant 1 Block 2 | **fail** (exit code) | 380.3 s | three verification lines | all three lines, then exit code -1 | `Select-Object -First 3` cut the pipe. Fix `0ad022c`, timeout note `ac77ef0`; re-run 29.9 s, exit 0. Owner: skill |
-| Variant 2 (download, convert) | pass | 4383.3 s | 750 tensors, 4 shards, 16.3 GiB | `overlaid 750/750 Cosmos3 tensors`, 4 shards, `16.3 GiB`, exit 0 | no error. 63 of the 73 minutes were the converter's own fetch of the complete Qwen3-VL repository at about 5 MB/s; the release itself came in 5 minutes. Text corrected (`5d1f385`). Owner of the text: skill; of the behaviour: framework |
-| Variant 3, `smoke_20`, elevated | **fail** on line 1 | 0.7 s | `wrote 10 clips ...` | `FileNotFoundError: [WinError 2] The system cannot find the file specified` from `make_smoke_set.py` | no `ffmpeg` executable on the machine. Fix `c1f0a74` (PyAV fallback). Re-run from the start: pass, 287.8 s. Owner: skill. In that first attempt the launcher then stopped on the model path, because the conversion was still running; that second message is the validation's sequencing, not the skill |
-| Variant 3, `smoke_20`, re-run | pass | 287.8 s (job 280.9 s) | the launcher lines in order, exit 0 | `clock cap 1400 MHz applied`, `pacer armed (pause 84 C, resume 78 C, kill 87 C)`, `RUN train_smoke_20 wall=280.9s exit=0 timedOut=False`, `default clocks restored`, `run directory: ...`, `receipt: exit 0, 280.9 s wall, peak 51.0 C` | the expected log strings `train/avg_loss` and `completed successfully` are not in the logs at this framework commit. Fix `f7f1b2f`. Owner: skill |
+| Variant 1 Block 2 | **fail** (exit code) | 380.3 s | three verification lines | all three lines, then exit code -1 | `Select-Object -First 3` cut the pipe. Fix `002d58c`, timeout note `4269bb6`; re-run 29.9 s, exit 0. Owner: skill |
+| Variant 2 (download, convert) | pass | 4383.3 s | 750 tensors, 4 shards, 16.3 GiB | `overlaid 750/750 Cosmos3 tensors`, 4 shards, `16.3 GiB`, exit 0 | no error. 63 of the 73 minutes were the converter's own fetch of the complete Qwen3-VL repository at about 5 MB/s; the release itself came in 5 minutes. Text corrected (`61777d6`). Owner of the text: skill; of the behaviour: framework |
+| Variant 3, `smoke_20`, elevated | **fail** on line 1 | 0.7 s | `wrote 10 clips ...` | `FileNotFoundError: [WinError 2] The system cannot find the file specified` from `make_smoke_set.py` | no `ffmpeg` executable on the machine. Fix `17ddd05` (PyAV fallback). Re-run from the start: pass, 287.8 s. Owner: skill. In that first attempt the launcher then stopped on the model path, because the conversion was still running; that second message is the validation's sequencing, not the skill |
+| Variant 3, `smoke_20`, re-run | pass | 287.8 s (job 280.9 s) | the launcher lines in order, exit 0 | `clock cap 1400 MHz applied`, `pacer armed (pause 84 C, resume 78 C, kill 87 C)`, `RUN train_smoke_20 wall=280.9s exit=0 timedOut=False`, `default clocks restored`, `run directory: ...`, `receipt: exit 0, 280.9 s wall, peak 51.0 C` | the expected log strings `train/avg_loss` and `completed successfully` are not in the logs at this framework commit. Fix `97f7b7f`. Owner: skill |
 | Variant 3, `smoke_std`, standard shell | pass | 245.6 s (job 240.3 s) | `clock cap NOT applied (...): uncapped, pacer only`; completed; `no clock cap was applied; clocks unchanged` | exactly those lines, `receipt: exit 0, 240.3 s wall, peak 60.0 C` | none |
 | Variant 3, `smoke_nocap`, `-ClockCapMHz 0` | pass | 234.1 s | `no clock cap requested` | `no clock cap requested: uncapped, pacer only`, exit 0, `no clock cap was applied; clocks unchanged` | none |
-| Variant 4 on `smoke_20` | pass | 306.9 s | 750 tensors, `0 lora keys` | `750 tensors; 0 lora keys`, 5 shards, 16.3 GiB | none; needs a long timeout (in `f7f1b2f`) |
-| Variant 5 on the smoke validation set | pass | 35.9 s | one row per record, the metrics summary | 4 rows, `Overall accuracy: 0.5000`, `metrics.json` written, exit 0 | the row keys and paths in the skill were not the ones written (in `f7f1b2f`). All four answers were `no`, see below |
+| Variant 4 on `smoke_20` | pass | 306.9 s | 750 tensors, `0 lora keys` | `750 tensors; 0 lora keys`, 5 shards, 16.3 GiB | none; needs a long timeout (in `97f7b7f`) |
+| Variant 5 on the smoke validation set | pass | 35.9 s | one row per record, the metrics summary | 4 rows, `Overall accuracy: 0.5000`, `metrics.json` written, exit 0 | the row keys and paths in the skill were not the ones written (in `97f7b7f`). All four answers were `no`, see below |
 
 ## Smoke numbers
 
@@ -277,21 +277,25 @@ release. The skill may recommend the reduced download. The saving is the 3.2 GiB
 does not read those folders from the release at all, it fetches its own Wan2.2 VAE (2.8 GB) and sound tokenizer
 (2 GB) from the Hub in both cases, next to the complete Qwen3-VL repository (16.3 GiB).
 
-## Fixes committed on `skill/cosmos3-windows-arm64-spark-a`
+## Fixes committed on `skill/cosmos3-windows-arm64`
+
+The fixes were made on Spark A on the working branch `skill/cosmos3-windows-arm64-spark-a` and carried
+over to `skill/cosmos3-windows-arm64` with identical content. The ids below are those of
+`skill/cosmos3-windows-arm64`.
 
 | Commit | Title | Found in |
 |---|---|---|
-| `0ad022c` | validated-fix: Block 2 usage check ended with exit code -1 | Block 2 |
-| `ac77ef0` | validated-fix: say that Block 2 needs the ten-minute timeout as well | Block 2 |
-| `6e3d587` | validated-fix: DLL helper names torch lib for a venv without torch on a clean machine | helper check |
-| `c1f0a74` | validated-fix: smoke set no longer needs an ffmpeg executable (PyAV fallback, av pinned) | Variant 3 |
-| `644a759` | validated-fix: say what 2>&1 does to the preflight under Windows PowerShell 5.1 | Block 1 stream check |
-| `9091a58` | validated-fix: an uncapped probe reads lower, not higher; record capped against uncapped | probe, smoke runs |
-| `5d1f385` | validated-fix: Variant 2 downloads, time and disk as measured; reduced release confirmed | Variant 2 |
-| `f7f1b2f` | validated-fix: expected output of Variants 3 to 5 as framework e682c47 prints it; timeouts | Variants 3 to 5 |
-| `1878b7e` | validated-fix: the evaluator does not reproduce 480x288; say which frame sizes it evaluates faithfully | memorisation run, diagnosis |
+| `002d58c` | validated-fix: Block 2 usage check ended with exit code -1 | Block 2 |
+| `4269bb6` | validated-fix: say that Block 2 needs the ten-minute timeout as well | Block 2 |
+| `441be41` | validated-fix: DLL helper names torch lib for a venv without torch on a clean machine | helper check |
+| `17ddd05` | validated-fix: smoke set no longer needs an ffmpeg executable (PyAV fallback, av pinned) | Variant 3 |
+| `fcf111f` | validated-fix: say what 2>&1 does to the preflight under Windows PowerShell 5.1 | Block 1 stream check |
+| `c0d7385` | validated-fix: an uncapped probe reads lower, not higher; record capped against uncapped | probe, smoke runs |
+| `61777d6` | validated-fix: Variant 2 downloads, time and disk as measured; reduced release confirmed | Variant 2 |
+| `97f7b7f` | validated-fix: expected output of Variants 3 to 5 as framework e682c47 prints it; timeouts | Variants 3 to 5 |
+| `ed44095` | validated-fix: the evaluator does not reproduce 480x288; say which frame sizes it evaluates faithfully | memorisation run, diagnosis |
 
-After `c1f0a74` Block 2 and Variant 3 were re-run from the start and passed. The text-only commits were not
+After `17ddd05` Block 2 and Variant 3 were re-run from the start and passed. The text-only commits were not
 followed by a re-run.
 
 ## Framework-owned findings (recorded, not patched)
@@ -336,6 +340,16 @@ followed by a re-run.
   captured from inside this session.
 - The second TorchCodec candidate (`dev20261105+cu134`, FFmpeg 9) decodes, but no training or evaluation was
   run with it.
+
+## Follow-up after the report (2026-11-11, not run on Spark A)
+
+- Block 2 now checks out the framework commit of this validation by id (`e682c47`) and no longer the head
+  of `windows-compat`, which moves while PR #303 is in review. The two Git commands were tried against the
+  fork from a fresh no-LFS clone on another machine (`HEAD is now at e682c47`, exit 0, twice in a row);
+  the block as a whole was not re-run on Windows.
+- Block 2 and `windows-setup.md` name the wheel chosen above (A).
+- `eval/eval.config`: `setup.ref` is `e682c47`, and the `nano-lora-smoke` case asks for the per-step loss
+  lines the logs contain (framework-owned finding 4). The cases themselves are still not run.
 
 ## State left on the machine
 
