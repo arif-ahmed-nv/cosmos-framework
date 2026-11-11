@@ -76,7 +76,10 @@ from any directory once the package is installed editable.
 | RTX Spark, 128 GB | 101 to 107 GiB | yes; about 1.8 s per step, 17 to 19 W, 80 to 83 C, no pauses at the 1400 MHz cap | yes; about 0.5 s per step, 17 W, 73 to 77 C (earlier stack, 1600 MHz cap) | all variants below |
 | RTX Spark, 64 GB | about 45 GiB | yes with `max_sequence_length = 8192` in the recipe (one line); saves take about two minutes and most of the host memory | yes | measured by QA on a 38 GB-RAM unit: 20-step run at 1.3 s per step, 33 GB DCP per save |
 
-Disk: raw release 33 GB, processor cache 16 GB, converted model 16 GB, one DCP checkpoint 33 GB.
+Disk, as measured: raw release 35 GB, Hugging Face cache filled by the converter 24 GB, converted
+model 17.6 GB, venv 4 GB, one DCP checkpoint 35.3 GB, one export 17.6 GB. That is about 135 GB
+with one checkpoint and one export on disk; the release can be deleted once the conversion is
+done and a checkpoint once it is exported.
 
 ## Variant 1 — Environment
 
@@ -142,8 +145,13 @@ source-built TorchCodec needs its FFmpeg `bin` and GStreamer's `msvc_arm64\bin`:
 Reference: `references/windows-setup.md` § Model. `nvidia/Cosmos3-Nano` is public and was not
 gated when checked on 2026-11-06, so there is no gate to accept; keep `HF_TOKEN` in the shell
 if you have one. The download is about 33 GB: on a slow link, copy the release or the converted
-directory from a machine that already has it. The converter also fetches the
-`Qwen/Qwen3-VL-8B-Instruct` processor and runs on the CPU.
+directory from a machine that already has it. The converter runs on the CPU and fetches three
+more things from the Hub into the Hugging Face cache, whatever the release directory holds: the
+complete `Qwen/Qwen3-VL-8B-Instruct` repository (16.3 GiB), the Wan2.2 VAE (2.8 GB) and the
+sound tokenizer (2 GB, stored twice). Measured without `HF_TOKEN`: the release in 5 minutes at
+114 MB/s, the Qwen fetch in 63 minutes at 5 MB/s, the conversion itself in 4 minutes. Run the
+block in the background or give it a two-hour timeout; a second conversion with the cache warm
+takes two minutes.
 
 ```powershell
 $ROOT = "C:\cosmos3"; $VENV = "$ROOT\venv"; $PY = "$VENV\Scripts\python.exe"; $MODELS = "$ROOT\models"

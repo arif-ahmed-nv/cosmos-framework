@@ -126,17 +126,26 @@ where several machines are set up at once, stage the release, or the 16 GB conve
 that every later step reads, on a share or a drive and copy it. The generator-only folders
 `vae/`, `sound_tokenizer/`, `assets/` and `images/` (about 3.3 GB) can be left out with
 `hf download nvidia/Cosmos3-Nano --local-dir <dir> --exclude "vae/*" --exclude "sound_tokenizer/*"
---exclude "assets/*" --exclude "images/*"` (one `--exclude` per pattern). Skill note: that
-subset comes from a tester's report; a conversion from a release without those folders is on
-the pending list of `validation.md`. If the converter stops on a missing file, fetch the full
-release.
+--exclude "assets/*" --exclude "images/*"` (one `--exclude` per pattern). Validated on
+2026-11-10 (`validation-spark-a.md`): a conversion from a release without those four folders
+gave 750 tensors in 4 shards, every file byte-identical to the conversion from the full
+release. The saving is the 3.2 GiB of the download and nothing more: the converter fetches its
+own VAE and sound tokenizer from the Hub in either case.
 
 The converter (`python -m cosmos_framework.scripts.convert_model_to_vlm_safetensors --checkpoint-path
 <release dir> -o <VLM dir>`) runs on the CPU, overlays the Cosmos3 vision tower and language
-model onto a Qwen3-VL-shaped HF directory, and fetches the `Qwen/Qwen3-VL-8B-Instruct` processor
-(about 16 GB of cache). Keep the venv's `Scripts` on `PATH` while it runs so a nested `uv` call
-resolves. Expected: 750 tensors in 4 shards, 16.3 GiB. Disk budget: release 33 GB, cache 16 GB,
-converted 16 GB, plus 33 GB per DCP checkpoint.
+model onto a Qwen3-VL-shaped HF directory. It fetches what it needs from the Hub through a
+nested `uv run ... hf download`, into the default Hugging Face cache: the complete
+`Qwen/Qwen3-VL-8B-Instruct` repository (16.3 GiB of weights, not only the processor), the
+Wan2.2 VAE (2.8 GB) and the AVAE sound tokenizer (2 GB, kept as a blob and a converted copy).
+That fetch is the slow part: 63 minutes at 5 MB/s on a machine that had just pulled the release
+at 114 MB/s, unauthenticated and without `hf_xet`. Stage the cache folder
+`models--Qwen--Qwen3-VL-8B-Instruct` along with the release where several machines are set up.
+Keep the venv's `Scripts` on `PATH` while it runs so the nested `uv` call resolves; that `uv`
+uses its default cache and interpreter folders, not the ones Block 1 set (not tested under a
+packaged agent app). Expected: `overlaid 750/750 Cosmos3 tensors`, 750 tensors in 4 shards,
+16.3 GiB (17.6 GB). Disk budget: release 35 GB, Hub cache 24 GB, converted 17.6 GB, plus
+35.3 GB per DCP checkpoint and 17.6 GB per export.
 
 ## Memory and GPU readings
 
